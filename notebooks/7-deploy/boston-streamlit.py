@@ -1,8 +1,11 @@
 import os
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 from joblib import load
+from sklearn.base import BaseEstimator
+from sklearn.compose import ColumnTransformer
 
 # https://docs.streamlit.io/library/api-reference
 
@@ -165,7 +168,9 @@ def load_artifacts(models_dir: str) -> tuple:
     return preprocessor, model
 
 
-def predict(preprocessor, model, df_raw: pd.DataFrame):
+def predict(
+    preprocessor: ColumnTransformer, model: BaseEstimator, df_raw: pd.DataFrame
+) -> "np.ndarray":
     """Apply the pipeline (preprocessor + model) to raw input data.
 
     Args:
@@ -183,7 +188,7 @@ def predict(preprocessor, model, df_raw: pd.DataFrame):
     return model.predict(x_transformed_df)
 
 
-def individual_prediction_tab(preprocessor, model) -> None:
+def individual_prediction_tab(preprocessor: ColumnTransformer, model: BaseEstimator) -> None:
     """Display the individual prediction interface."""
     df_user_data = get_user_data()
 
@@ -199,7 +204,7 @@ def individual_prediction_tab(preprocessor, model) -> None:
     )
 
 
-def batch_prediction_tab(preprocessor, model) -> None:
+def batch_prediction_tab(preprocessor: ColumnTransformer, model: BaseEstimator) -> None:
     """Display the batch prediction interface for CSV uploads."""
     st.subheader("Sube tu archivo CSV con datos de propiedades")
 
@@ -219,9 +224,7 @@ def batch_prediction_tab(preprocessor, model) -> None:
             elif st.button("Predecir precios"):
                 with st.spinner("Procesando y prediciendo..."):
                     df_processed = preprocess_batch_data(df)
-                    predictions = predict(
-                        preprocessor, model, df_processed[FEATURE_COLUMNS]
-                    )
+                    predictions = predict(preprocessor, model, df_processed[FEATURE_COLUMNS])
 
                     result_df = df.copy()
                     result_df["medv_predicho"] = predictions
