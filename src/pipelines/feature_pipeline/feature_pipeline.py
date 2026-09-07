@@ -17,6 +17,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.pipelines.feature_pipeline.validate_data import (
+    validate_features,
+    validate_raw_data,
+)
+
 RAW_DATA_PATH = Path("data/01_raw/Precios_Casas_Boston.csv")
 OUTPUT_PATH = Path("data/02_intermediate/boston_features.parquet")
 
@@ -133,10 +138,12 @@ def build_features(raw_filepath: Path) -> pd.DataFrame:
         Training Pipeline. No incluye imputacion ni escalado.
     """
     df = load_raw_data(raw_filepath)
+    df = validate_raw_data(df)
     df = fix_scale_issues(df)
     df = fix_data_types(df)
     df = select_features(df)
     df = clean_data(df)
+    df = validate_features(df)
     return df
 
 
