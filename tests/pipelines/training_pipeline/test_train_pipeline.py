@@ -1,5 +1,6 @@
 """Pruebas unitarias para el Training Pipeline."""
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,7 @@ from src.pipelines.training_pipeline.train_pipeline import (
     save_artifacts,
     split_data,
     train_model,
+    validate_train_test_split,
 )
 
 
@@ -154,3 +156,58 @@ def test_save_artifacts_crea_los_archivos_esperados(
     finally:
         tp.MODELS_DIR = original_models_dir
         tp.PRIMARY_DATA_DIR = original_primary_dir
+
+
+def test_validate_train_test_split_detecta_overlap_de_indices(
+    sample_features_df: pd.DataFrame,
+) -> None:
+    """Debe lanzar ValueError si train y test comparten indices."""
+    x = sample_features_df.drop(columns=["medv"])
+    y = sample_features_df["medv"]
+    x_train_con_overlap = x.iloc[:20]
+    x_test_con_overlap = x.iloc[15:25]
+    y_train_con_overlap = y.iloc[:20]
+    y_test_con_overlap = y.iloc[15:25]
+
+    with pytest.raises(ValueError, match="indices duplicados"):
+        validate_train_test_split(
+            x_train_con_overlap,
+            x_test_con_overlap,
+            y_train_con_overlap,
+            y_test_con_overlap,
+        )
+
+
+def test_validate_train_test_split_acepta_split_representativo(
+    sample_features_df: pd.DataFrame,
+) -> None:
+    """No debe lanzar error ni warning con un split representativo."""
+    x_train, x_test, y_train, y_test = split_data(
+        sample_features_df, test_size=0.2, random_state=42
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        validate_train_test_split(x_train, x_test, y_train, y_test)
+
+
+def test_validate_train_test_split_advierte_distribucion_distinta() -> None:
+    """Debe emitir UserWarning si las medias de train/test difieren demasiado."""
+    x_train = pd.DataFrame({"crim": range(20)}, index=range(20))
+    x_test = pd.DataFrame({"crim": range(20, 25)}, index=range(20, 25))
+    y_train = pd.Series([10.0] * 20, index=range(20))
+    y_test = pd.Series([45.0] * 5, index=range(20, 25))
+
+    with pytest.warns(UserWarning, match="diferencia de medias"):
+        validate_train_test_split(x_train, x_test, y_train, y_test)
+
+
+def test_validate_train_test_split_advierte_nulos_distintos() -> None:
+    """Debe emitir UserWarning si la proporcion de nulos difiere demasiado."""
+    x_train = pd.DataFrame({"crim": [1.0] * 20}, index=range(20))
+    x_test = pd.DataFrame({"crim": [np.nan] * 3 + [1.0] * 2}, index=range(20, 25))
+    y_train = pd.Series([20.0] * 20, index=range(20))
+    y_test = pd.Series([20.0] * 5, index=range(20, 25))
+
+    with pytest.warns(UserWarning, match="proporcion de nulos"):
+        validate_train_test_split(x_train, x_test, y_train, y_test)

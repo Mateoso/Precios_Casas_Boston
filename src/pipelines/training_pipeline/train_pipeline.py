@@ -9,6 +9,7 @@ Ejecucion autonoma:
     python -m src.pipelines.training_pipeline.train_pipeline
 """
 
+import warnings
 from pathlib import Path
 from typing import cast
 
@@ -30,7 +31,8 @@ MODELS_DIR = Path("models")
 TARGET_COLUMN = "medv"
 LOG_FEATURES = ["crim", "zn", "dis", "lstat"]
 BOOLEAN_FEATURES = ["chas"]
-
+DISTRIBUTION_THRESHOLD_STD = 0.5
+MAX_NULL_DIFFERENCE = 0.05
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
 
@@ -75,6 +77,65 @@ def split_data(
         tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series],
         train_test_split(x, y, test_size=test_size, random_state=random_state),
     )
+
+
+def validate_train_test_split(
+    x_train: pd.DataFrame,
+    x_test: pd.DataFrame,
+    y_train: pd.Series,
+    y_test: pd.Series,
+) -> None:
+    """Verifica que la separacion train/test sea correcta y representativa.
+
+    Comprueba ausencia de overlap de indices (data leakage), similitud de
+    distribucion del target entre ambos conjuntos, y proporcion comparable
+    de nulos por columna.
+
+    Args:
+        x_train: Features de entrenamiento.
+        x_test: Features de prueba.
+        y_train: Target de entrenamiento.
+        y_test: Target de prueba.
+
+    Raises:
+        ValueError: si se detecta overlap de indices entre train y test.
+
+    Warns:
+        UserWarning: si la distribucion del target o los nulos difieren
+            mas alla del umbral esperado entre train y test.
+    """
+    overlap = set(x_train.index) & set(x_test.index)
+    if overlap:
+        raise ValueError(
+            f"Se detectaron {len(overlap)} indices duplicados entre train y test: "
+            "posible fuga de informacion (data leakage)."
+        )
+
+    y_completo = pd.concat([y_train, y_test])
+    diferencia_medias = abs(y_train.mean() - y_test.mean())
+    umbral = DISTRIBUTION_THRESHOLD_STD * y_completo.std()
+
+    if diferencia_medias > umbral:
+        warnings.warn(
+            f"La diferencia de medias del target entre train ({y_train.mean():.2f}) "
+            f"y test ({y_test.mean():.2f}) supera el umbral esperado "
+            f"({umbral:.2f}). El split podria no ser representativo.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    nulos_train = x_train.isna().mean()
+    nulos_test = x_test.isna().mean()
+    diferencia_nulos = (nulos_train - nulos_test).abs()
+
+    if (diferencia_nulos > MAX_NULL_DIFFERENCE).any():
+        columnas_afectadas = diferencia_nulos[diferencia_nulos > MAX_NULL_DIFFERENCE].index.tolist()
+        warnings.warn(
+            f"La proporcion de nulos difiere notablemente entre train y test "
+            f"en las columnas: {columnas_afectadas}",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 def build_preprocessor(df: pd.DataFrame) -> ColumnTransformer:
@@ -200,9 +261,9 @@ def save_artifacts(
 
 
 def main() -> None:
-    """Ejecuta el Training Pipeline de forma autonoma."""
     df = load_features(FEATURES_PATH)
     x_train, x_test, y_train, y_test = split_data(df, TEST_SIZE, RANDOM_STATE)
+    validate_train_test_split(x_train, x_test, y_train, y_test)
 
     preprocessor = build_preprocessor(x_train)
     model, fitted_preprocessor = train_model(x_train, y_train, preprocessor)
