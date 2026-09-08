@@ -7,9 +7,11 @@ import pandas as pd
 import pytest
 from sklearn.ensemble import GradientBoostingRegressor
 
+import src.pipelines.training_pipeline.train_pipeline as tp
 from src.pipelines.training_pipeline.train_pipeline import (
     build_preprocessor,
     evaluate_model,
+    load_features,
     save_artifacts,
     split_data,
     train_model,
@@ -39,20 +41,31 @@ def sample_features_df() -> pd.DataFrame:
     )
 
 
+def test_load_features_carga_parquet_correctamente(tmp_path: Path) -> None:
+    """load_features debe leer un parquet y devolver un DataFrame con las columnas esperadas."""
+    n_rows_esperadas = 2
+    sample_df = pd.DataFrame({"crim": [0.1, 0.2], "medv": [20.0, 25.0]})
+    filepath = tmp_path / "test_features.parquet"
+    sample_df.to_parquet(filepath, index=False)
+
+    result = load_features(filepath)
+
+    assert list(result.columns) == ["crim", "medv"]
+    assert len(result) == n_rows_esperadas
+
+
 def test_split_data_respeta_proporcion(sample_features_df: pd.DataFrame) -> None:
     """El split debe respetar aproximadamente el test_size solicitado."""
-    x_train, x_test, _, _ = split_data(
-        sample_features_df, test_size=0.2, random_state=42
-    )
-    assert len(x_test) == 6
-    assert len(x_train) == 24
+    n_test_esperado = 6
+    n_train_esperado = 24
+    x_train, x_test, _, _ = split_data(sample_features_df, test_size=0.2, random_state=42)
+    assert len(x_test) == n_test_esperado
+    assert len(x_train) == n_train_esperado
 
 
 def test_split_data_no_comparte_indices(sample_features_df: pd.DataFrame) -> None:
     """Train y test no deben compartir ninguna fila (sin data leakage por overlap)."""
-    x_train, x_test, _, _ = split_data(
-        sample_features_df, test_size=0.2, random_state=42
-    )
+    x_train, x_test, _, _ = split_data(sample_features_df, test_size=0.2, random_state=42)
     overlap = set(x_train.index) & set(x_test.index)
     assert len(overlap) == 0
 
@@ -109,8 +122,6 @@ def test_save_artifacts_crea_los_archivos_esperados(
     sample_features_df: pd.DataFrame, tmp_path: Path
 ) -> None:
     """save_artifacts debe crear el modelo, preprocessor y metricas en disco."""
-    import src.pipelines.training_pipeline.train_pipeline as tp
-
     original_models_dir = tp.MODELS_DIR
     original_primary_dir = tp.PRIMARY_DATA_DIR
     tp.MODELS_DIR = tmp_path / "models"
@@ -125,7 +136,15 @@ def test_save_artifacts_crea_los_archivos_esperados(
         metrics = evaluate_model(model, fitted_preprocessor, x_test, y_test)
 
         save_artifacts(
-            model, fitted_preprocessor, metrics, x_train, x_test, y_train, y_test
+            model,
+            fitted_preprocessor,
+            metrics,
+            {
+                "x_train": x_train,
+                "x_test": x_test,
+                "y_train": y_train,
+                "y_test": y_test,
+            },
         )
 
         assert (tp.MODELS_DIR / "model.joblib").exists()

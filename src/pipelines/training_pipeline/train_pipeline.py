@@ -92,9 +92,7 @@ def build_preprocessor(df: pd.DataFrame) -> ColumnTransformer:
     """
     log_features = [c for c in LOG_FEATURES if c in df.columns]
     boolean_features = [c for c in BOOLEAN_FEATURES if c in df.columns]
-    numeric_features = [
-        c for c in df.columns if c not in log_features + boolean_features
-    ]
+    numeric_features = [c for c in df.columns if c not in log_features + boolean_features]
 
     log_pipe = Pipeline(
         steps=[
@@ -173,10 +171,7 @@ def save_artifacts(
     model: GradientBoostingRegressor,
     preprocessor: ColumnTransformer,
     metrics: dict[str, float],
-    x_train: pd.DataFrame,
-    x_test: pd.DataFrame,
-    y_train: pd.Series,
-    y_test: pd.Series,
+    data_splits: dict[str, pd.DataFrame | pd.Series],
 ) -> None:
     """Guarda el modelo, el preprocessor, las metricas y los splits de datos.
 
@@ -195,10 +190,10 @@ def save_artifacts(
     joblib.dump(model, MODELS_DIR / "model.joblib")
     joblib.dump(preprocessor, MODELS_DIR / "preprocessor.joblib")
 
-    x_train.to_parquet(PRIMARY_DATA_DIR / "x_train.parquet", index=False)
-    x_test.to_parquet(PRIMARY_DATA_DIR / "x_test.parquet", index=False)
-    y_train.to_frame().to_parquet(PRIMARY_DATA_DIR / "y_train.parquet", index=False)
-    y_test.to_frame().to_parquet(PRIMARY_DATA_DIR / "y_test.parquet", index=False)
+    data_splits["x_train"].to_parquet(PRIMARY_DATA_DIR / "x_train.parquet", index=False)
+    data_splits["x_test"].to_parquet(PRIMARY_DATA_DIR / "x_test.parquet", index=False)
+    data_splits["y_train"].to_frame().to_parquet(PRIMARY_DATA_DIR / "y_train.parquet", index=False)
+    data_splits["y_test"].to_frame().to_parquet(PRIMARY_DATA_DIR / "y_test.parquet", index=False)
 
     metrics_df = pd.DataFrame([metrics])
     metrics_df.to_csv(MODELS_DIR / "metrics.csv", index=False)
@@ -214,7 +209,10 @@ def main() -> None:
 
     metrics = evaluate_model(model, fitted_preprocessor, x_test, y_test)
     save_artifacts(
-        model, fitted_preprocessor, metrics, x_train, x_test, y_train, y_test
+        model,
+        fitted_preprocessor,
+        metrics,
+        {"x_train": x_train, "x_test": x_test, "y_train": y_train, "y_test": y_test},
     )
 
     print(f"Modelo y preprocessor guardados en {MODELS_DIR}")
