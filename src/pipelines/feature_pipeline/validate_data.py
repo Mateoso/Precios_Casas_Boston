@@ -5,6 +5,8 @@ features procesadas de salida. Si una validacion falla, se lanza una
 excepcion explicita y no se persisten los features.
 """
 
+from typing import cast
+
 import pandera.pandas as pa
 from pandera.pandas import Check, Column, DataFrameSchema
 
@@ -92,7 +94,7 @@ def validate_raw_data(df: pa.typing.DataFrame) -> pa.typing.DataFrame:
     Raises:
         pandera.errors.SchemaErrors: si el DataFrame no cumple el schema.
     """
-    return raw_data_schema.validate(df, lazy=True)
+    return cast(pa.typing.DataFrame, raw_data_schema.validate(df, lazy=True))
 
 
 def validate_features(df: pa.typing.DataFrame) -> pa.typing.DataFrame:
@@ -107,4 +109,4 @@ def validate_features(df: pa.typing.DataFrame) -> pa.typing.DataFrame:
     Raises:
         pandera.errors.SchemaErrors: si el DataFrame no cumple el schema.
     """
-    return features_output_schema.validate(df, lazy=True)
+    return cast(pa.typing.DataFrame, features_output_schema.validate(df, lazy=True))
