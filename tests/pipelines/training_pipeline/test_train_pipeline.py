@@ -23,7 +23,7 @@ from src.pipelines.training_pipeline.train_pipeline import (
 @pytest.fixture
 def sample_features_df() -> pd.DataFrame:
     """DataFrame sintetico pequeno que imita la salida del Feature Pipeline."""
-    n = 30
+    n = 100
     rng = np.random.default_rng(seed=42)
     return pd.DataFrame(
         {
@@ -58,8 +58,8 @@ def test_load_features_carga_parquet_correctamente(tmp_path: Path) -> None:
 
 def test_split_data_respeta_proporcion(sample_features_df: pd.DataFrame) -> None:
     """El split debe respetar aproximadamente el test_size solicitado."""
-    n_test_esperado = 6
-    n_train_esperado = 24
+    n_test_esperado = 20
+    n_train_esperado = 80
     x_train, x_test, _, _ = split_data(sample_features_df, test_size=0.2, random_state=42)
     assert len(x_test) == n_test_esperado
     assert len(x_train) == n_train_esperado
@@ -193,8 +193,13 @@ def test_validate_train_test_split_acepta_split_representativo(
 
 def test_validate_train_test_split_advierte_distribucion_distinta() -> None:
     """Debe emitir UserWarning si las medias de train/test difieren demasiado."""
-    x_train = pd.DataFrame({"crim": range(20)}, index=range(20))
-    x_test = pd.DataFrame({"crim": range(20, 25)}, index=range(20, 25))
+    x_train = pd.DataFrame(
+        {"crim": range(20), "rm": [6.0] * 20, "lstat": [10.0] * 20}, index=range(20)
+    )
+    x_test = pd.DataFrame(
+        {"crim": range(20, 25), "rm": [6.0] * 5, "lstat": [10.0] * 5},
+        index=range(20, 25),
+    )
     y_train = pd.Series([10.0] * 20, index=range(20))
     y_test = pd.Series([45.0] * 5, index=range(20, 25))
 
@@ -204,8 +209,17 @@ def test_validate_train_test_split_advierte_distribucion_distinta() -> None:
 
 def test_validate_train_test_split_advierte_nulos_distintos() -> None:
     """Debe emitir UserWarning si la proporcion de nulos difiere demasiado."""
-    x_train = pd.DataFrame({"crim": [1.0] * 20}, index=range(20))
-    x_test = pd.DataFrame({"crim": [np.nan] * 3 + [1.0] * 2}, index=range(20, 25))
+    x_train = pd.DataFrame(
+        {"crim": [1.0] * 20, "rm": [6.0] * 20, "lstat": [10.0] * 20}, index=range(20)
+    )
+    x_test = pd.DataFrame(
+        {
+            "crim": [np.nan] * 3 + [1.0] * 2,
+            "rm": [6.0] * 5,
+            "lstat": [10.0] * 5,
+        },
+        index=range(20, 25),
+    )
     y_train = pd.Series([20.0] * 20, index=range(20))
     y_test = pd.Series([20.0] * 5, index=range(20, 25))
 

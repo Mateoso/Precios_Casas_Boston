@@ -27,7 +27,7 @@ from sklearn.preprocessing import FunctionTransformer, StandardScaler
 FEATURES_PATH = Path("data/02_intermediate/boston_features.parquet")
 PRIMARY_DATA_DIR = Path("data/03_primary")
 MODELS_DIR = Path("models")
-
+KEY_PREDICTORS = ["crim", "rm", "lstat"]
 TARGET_COLUMN = "medv"
 LOG_FEATURES = ["crim", "zn", "dis", "lstat"]
 BOOLEAN_FEATURES = ["chas"]
@@ -123,7 +123,20 @@ def validate_train_test_split(
             UserWarning,
             stacklevel=2,
         )
+    for columna in KEY_PREDICTORS:
+        diferencia_predictor = abs(x_train[columna].mean() - x_test[columna].mean())
+        valores_completos = pd.concat([x_train[columna], x_test[columna]])
+        umbral_predictor = DISTRIBUTION_THRESHOLD_STD * valores_completos.std()
 
+        if diferencia_predictor > umbral_predictor:
+            warnings.warn(
+                f"La diferencia de medias de '{columna}' entre train "
+                f"({x_train[columna].mean():.2f}) y test "
+                f"({x_test[columna].mean():.2f}) supera el umbral esperado "
+                f"({umbral_predictor:.2f}). El split podria no ser representativo.",
+                UserWarning,
+                stacklevel=2,
+            )
     nulos_train = x_train.isna().mean()
     nulos_test = x_test.isna().mean()
     diferencia_nulos = (nulos_train - nulos_test).abs()
