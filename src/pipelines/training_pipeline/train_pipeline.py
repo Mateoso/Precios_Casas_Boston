@@ -20,7 +20,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold, cross_validate, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
@@ -35,6 +35,10 @@ DISTRIBUTION_THRESHOLD_STD = 0.5
 MAX_NULL_DIFFERENCE = 0.05
 TEST_SIZE = 0.2
 RANDOM_STATE = 42
+CV_FOLDS = 10
+CV_TEST_CONSISTENCY_THRESHOLD = 0.3
+OVERFITTING_THRESHOLD = 0.6
+MAE_BASELINE_HEURISTICO = 3.93
 
 MODEL_PARAMS = {
     "learning_rate": 0.05,
@@ -241,6 +245,116 @@ def evaluate_model(
     }
 
 
+def validate_model(
+    data_splits: dict[str, pd.DataFrame | pd.Series],
+    model: GradientBoostingRegressor,
+    preprocessor: ColumnTransformer,
+) -> dict[str, dict[str, float] | str]:
+    """Valida el modelo con cross-validation y compara train/CV/test.
+
+    Ajusta un Pipeline (preprocessor + modelo) dentro de cada fold del KFold,
+    evitando fuga de informacion. Genera dos diagnosticos independientes:
+    (1) overfitting/underfitting, comparando train vs. test -- la comparacion
+    clasica para este concepto; y (2) consistencia metodologica, comparando
+    CV vs. test -- verifica que el set de test no este dando una estimacion
+    optimista o pesimista por casualidad, ya que CV es una estimacion mas
+    robusta del desempeno real al promediar sobre 10 particiones distintas.
+
+    Args:
+        x_train: Features de entrenamiento (sin transformar).
+        y_train: Target de entrenamiento.
+        x_test: Features de prueba (sin transformar).
+        y_test: Target de prueba.
+        model: Modelo a validar (sin entrenar).
+        preprocessor: Preprocessor sin ajustar.
+
+    Returns:
+        Diccionario con metricas de train, cv (media y std) y test, mas un
+        diagnostico textual de over/underfitting.
+    """
+    full_pipeline = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("model", model),
+        ]
+    )
+
+    kfold = KFold(n_splits=CV_FOLDS, shuffle=True, random_state=RANDOM_STATE)
+    cv_results = cross_validate(
+        full_pipeline,
+        data_splits["x_train"],
+        data_splits["y_train"],
+        cv=kfold,
+        scoring=["neg_mean_absolute_error", "neg_root_mean_squared_error", "r2"],
+    )
+
+    full_pipeline.fit(data_splits["x_train"], data_splits["y_train"])
+    pred_train = full_pipeline.predict(data_splits["x_train"])
+    pred_test = full_pipeline.predict(data_splits["x_test"])
+
+    metrics_train = {
+        "MAE": mean_absolute_error(data_splits["y_train"], pred_train),
+        "RMSE": mean_squared_error(data_splits["y_train"], pred_train) ** 0.5,
+        "R2": r2_score(data_splits["y_train"], pred_train),
+    }
+    metrics_cv = {
+        "MAE": -cv_results["test_neg_mean_absolute_error"].mean(),
+        "MAE_std": cv_results["test_neg_mean_absolute_error"].std(),
+        "RMSE": -cv_results["test_neg_root_mean_squared_error"].mean(),
+        "R2": cv_results["test_r2"].mean(),
+    }
+    metrics_test = {
+        "MAE": mean_absolute_error(data_splits["y_test"], pred_test),
+        "RMSE": mean_squared_error(data_splits["y_test"], pred_test) ** 0.5,
+        "R2": r2_score(data_splits["y_test"], pred_test),
+    }
+
+    brecha_relativa = (metrics_test["MAE"] - metrics_train["MAE"]) / metrics_train["MAE"]
+
+    brecha_cv_test = (metrics_test["MAE"] - metrics_cv["MAE"]) / metrics_cv["MAE"]
+
+    if abs(brecha_cv_test) <= CV_TEST_CONSISTENCY_THRESHOLD:
+        consistencia = (
+            f"Test y CV son consistentes entre si (diferencia relativa: "
+            f"{brecha_cv_test:.1%}) -- el set de test no parece estar "
+            "sobre ni sub-estimando el desempeno real del modelo."
+        )
+    else:
+        consistencia = (
+            f"ADVERTENCIA: Test y CV difieren notablemente (diferencia relativa: "
+            f"{brecha_cv_test:.1%}) -- el set de test podria no ser representativo "
+            "de la variabilidad real del problema. Considerar aumentar cv_folds "
+            "o revisar el tamano del set de test."
+        )
+    if brecha_relativa > OVERFITTING_THRESHOLD:
+        diagnostico = (
+            f"OVERFITTING: la brecha relativa entre test y train "
+            f"({brecha_relativa:.1%}) supera el umbral ({OVERFITTING_THRESHOLD:.0%}). "
+            "Considerar mayor regularizacion (reducir max_depth, aumentar "
+            "min_samples_leaf o subsample mas agresivo)."
+        )
+    elif metrics_train["MAE"] > MAE_BASELINE_HEURISTICO:
+        diagnostico = (
+            f"UNDERFITTING: el MAE de train ({metrics_train['MAE']:.2f}) supera "
+            f"el del heuristico simple ({MAE_BASELINE_HEURISTICO:.2f}). "
+            "Considerar mayor complejidad del modelo o mas features."
+        )
+    else:
+        diagnostico = (
+            f"ACEPTABLE: brecha relativa de {brecha_relativa:.1%} dentro del "
+            f"umbral ({OVERFITTING_THRESHOLD:.0%}), y MAE de train supera al "
+            "heuristico baseline."
+        )
+
+    return {
+        "train": metrics_train,
+        "cv": metrics_cv,
+        "test": metrics_test,
+        "diagnostico_overfitting": diagnostico,
+        "diagnostico_consistencia": consistencia,
+    }
+
+
 def save_artifacts(
     model: GradientBoostingRegressor,
     preprocessor: ColumnTransformer,
@@ -282,6 +396,15 @@ def main() -> None:
     model, fitted_preprocessor = train_model(x_train, y_train, preprocessor)
 
     metrics = evaluate_model(model, fitted_preprocessor, x_test, y_test)
+
+    validacion_modelo = validate_model(
+        {"x_train": x_train, "x_test": x_test, "y_train": y_train, "y_test": y_test},
+        GradientBoostingRegressor(**MODEL_PARAMS),
+        build_preprocessor(x_train),
+    )
+
+    print(f"Validacion del modelo: {validacion_modelo}")
+
     save_artifacts(
         model,
         fitted_preprocessor,

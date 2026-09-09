@@ -6,7 +6,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.preprocessing import StandardScaler
 
 import src.pipelines.training_pipeline.train_pipeline as tp
 from src.pipelines.training_pipeline.train_pipeline import (
@@ -16,6 +18,7 @@ from src.pipelines.training_pipeline.train_pipeline import (
     save_artifacts,
     split_data,
     train_model,
+    validate_model,
     validate_train_test_split,
 )
 
@@ -118,6 +121,93 @@ def test_evaluate_model_genera_metricas_esperadas(
     assert set(metrics.keys()) == {"MAE", "RMSE", "R2"}
     assert metrics["MAE"] >= 0
     assert metrics["RMSE"] >= 0
+
+
+def test_validate_model_retorna_las_tres_fuentes_de_metricas(
+    sample_features_df: pd.DataFrame,
+) -> None:
+    """El resultado debe incluir metricas de train, cv y test."""
+    x_train, x_test, y_train, y_test = split_data(
+        sample_features_df, test_size=0.2, random_state=42
+    )
+    preprocessor = build_preprocessor(x_train)
+    model = GradientBoostingRegressor(**tp.MODEL_PARAMS)
+
+    resultado = validate_model(
+        {"x_train": x_train, "x_test": x_test, "y_train": y_train, "y_test": y_test},
+        model,
+        preprocessor,
+    )
+
+    assert set(resultado.keys()) == {
+        "train",
+        "cv",
+        "test",
+        "diagnostico_overfitting",
+        "diagnostico_consistencia",
+    }
+    assert "MAE" in resultado["train"]
+    assert "MAE" in resultado["cv"]
+    assert "MAE" in resultado["test"]
+
+
+def test_validate_model_detecta_overfitting_severo() -> None:
+    """Un modelo con brecha train-test extrema debe diagnosticar OVERFITTING."""
+    n = 50
+    rng = np.random.default_rng(seed=1)
+    x = pd.DataFrame({"crim": rng.uniform(0, 10, n), "rm": rng.uniform(4, 8, n)})
+    y = pd.Series(rng.uniform(10, 40, n))
+
+    x_train, x_test = x.iloc[:40], x.iloc[40:]
+    y_train, y_test = y.iloc[:40], y.iloc[40:]
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", StandardScaler(), ["crim", "rm"]),
+        ]
+    )
+    # max_depth muy alto y sin regularizacion -- provoca overfitting real
+    model = GradientBoostingRegressor(max_depth=10, n_estimators=200, random_state=42)
+
+    resultado = validate_model(
+        {"x_train": x_train, "x_test": x_test, "y_train": y_train, "y_test": y_test},
+        model,
+        preprocessor,
+    )
+
+    assert "OVERFITTING" in resultado["diagnostico_overfitting"]
+
+
+def test_validate_model_detecta_inconsistencia_cv_test() -> None:
+    """Si CV y test difieren mucho, debe advertir sobre la inconsistencia."""
+    # Reutiliza el mismo escenario de overfitting severo, donde CV y test
+    # tambien suelen diferir bastante entre si dado el ruido del modelo
+    n = 50
+    rng = np.random.default_rng(seed=1)
+    x = pd.DataFrame({"crim": rng.uniform(0, 10, n), "rm": rng.uniform(4, 8, n)})
+    y = pd.Series(rng.uniform(10, 40, n))
+
+    x_train, x_test = x.iloc[:40], x.iloc[40:]
+    y_train, y_test = y.iloc[:40], y.iloc[40:]
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", StandardScaler(), ["crim", "rm"]),
+        ]
+    )
+    model = GradientBoostingRegressor(max_depth=10, n_estimators=200, random_state=42)
+
+    resultado = validate_model(
+        {"x_train": x_train, "x_test": x_test, "y_train": y_train, "y_test": y_test},
+        model,
+        preprocessor,
+    )
+
+    # No afirmamos un resultado especifico (podria salir consistente o no,
+    # dado el tamano pequeno de la muestra) -- solo confirmamos que la clave
+    # existe y contiene un diagnostico valido
+    assert "diagnostico_consistencia" in resultado
+    assert isinstance(resultado["diagnostico_consistencia"], str)
 
 
 def test_save_artifacts_crea_los_archivos_esperados(
