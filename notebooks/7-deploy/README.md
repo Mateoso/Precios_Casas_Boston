@@ -48,3 +48,56 @@ El dataset original (Boston Housing, 1978) tiene un techo de censura en $50,000 
 propiedades con valor real igual o superior a ese monto fueron registradas como exactamente
 $50,000. Las predicciones cercanas a ese valor pueden estar subestimadas (ver análisis
 detallado en `notebooks/6-interpretation/`).
+
+## 🌐 Demo pública
+
+La aplicación está desplegada en [Streamlit Community Cloud](https://streamlit.io/cloud)
+y accesible públicamente en:
+
+**[https://precioscasasboston-xfgrgttzc8tqctvpjn3odz.streamlit.app/](https://precioscasasboston-xfgrgttzc8tqctvpjn3odz.streamlit.app/)**
+
+No requiere instalación ni configuración de ningún tipo — cualquier persona con el enlace
+puede usarla directamente desde su navegador, sin necesidad de clonar el repositorio ni
+tener Python instalado.
+
+### Cómo usarla
+
+#### Predicción individual
+
+1. Abre el enlace en tu navegador
+2. En la pestaña **"Predicción Individual"**, ajusta los sliders e inputs numéricos con
+   las 11 características de la vivienda (tasa de criminalidad, número de cuartos,
+   distancia a centros de empleo, etc.)
+3. La predicción del precio (`medv`) se actualiza automáticamente en la parte inferior,
+   mostrando el valor estimado en miles y en dólares completos
+
+### Predicción por lote
+
+1. En la pestaña **"Predicción por Lote (CSV)"**, sube un archivo CSV con las 11 columnas
+   requeridas (ver formato exacto en la sección de archivos de ejemplo, más abajo)
+2. La app valida que el archivo tenga las columnas correctas antes de procesarlo
+3. Descarga el resultado, que incluye tus datos originales más una columna nueva
+   `medv_predicho` con la estimación de cada registro
+
+### Modelo detrás de la demo
+
+La app consume los artefactos generados por el Training Pipeline del Trabajo 2
+(`models/model.joblib`, `models/preprocessor.joblib`) — un modelo Gradient Boosting con
+MAE de test de 1.98 (miles de USD). Ver `src/pipelines/training_pipeline/` para el
+proceso completo de entrenamiento y validación.
+
+### Limitaciones conocidas
+
+- El modelo fue entrenado con datos de 1978 (dataset Boston Housing) — no refleja precios
+  ni condiciones de mercado actuales
+- Existe un techo de censura en los datos originales: los valores reales de vivienda por
+  encima de $50,000 fueron registrados como exactamente $50,000, lo que puede hacer que
+  las predicciones cercanas a ese valor estén subestimadas
+
+## 📊 Archivos de ejemplo (batch)
+
+- [`data/05_model_input/casas_ejemplo_prediccion_input.csv`](../../data/05_model_input/casas_ejemplo_prediccion_input.csv):
+  10 registros de entrada con las 11 columnas requeridas
+- [`data/07_model_output/casas_ejemplo_prediccion_output.csv`](../../data/07_model_output/casas_ejemplo_prediccion_output.csv):
+  resultado real generado por la demo pública, con la columna `medv_predicho` agregada
+  
