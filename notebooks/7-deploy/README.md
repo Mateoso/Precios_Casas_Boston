@@ -101,3 +101,12 @@ proceso completo de entrenamiento y validación.
 - [`data/07_model_output/casas_ejemplo_prediccion_output.csv`](../../data/07_model_output/casas_ejemplo_prediccion_output.csv):
   resultado real generado por la demo pública, con la columna `medv_predicho` agregada
   
+## 📸 Evidencia de funcionamiento
+
+### Prediccion individual
+
+![Predicción individual](evidencia/evidencia_prediccion_individual.png)
+
+### Predicción por lote (batch)
+
+![Predicción por lote](evidencia/evidencia_prediccion_batch.png)
