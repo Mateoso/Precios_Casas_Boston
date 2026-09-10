@@ -92,9 +92,7 @@ def predict(
     return cast(np.ndarray, model.predict(x_transformed))
 
 
-def save_predictions(
-    df_raw: pd.DataFrame, predictions: np.ndarray, output_path: Path
-) -> None:
+def save_predictions(df_raw: pd.DataFrame, predictions: np.ndarray, output_path: Path) -> None:
     """Guarda los datos originales junto con sus predicciones.
 
     Args:
