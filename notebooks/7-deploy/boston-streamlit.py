@@ -1,4 +1,5 @@
 import os
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -35,7 +36,7 @@ def get_user_data() -> pd.DataFrame:
         the preprocessing pipeline.
 
     """
-    user_data = {}
+    user_data: dict[str, float | str] = {}
 
     col_a, col_b = st.columns(2)
     with col_a:
@@ -162,8 +163,8 @@ def load_artifacts(models_dir: str) -> tuple:
 
     """
     with st.spinner("Cargando modelo..."):
-        preprocessor = load(os.path.join(models_dir, "preprocessor_pipeline.joblib"))
-        model = load(os.path.join(models_dir, "best_model.joblib"))
+        preprocessor = load(os.path.join(models_dir, "preprocessor.joblib"))
+        model = load(os.path.join(models_dir, "model.joblib"))
 
     return preprocessor, model
 
@@ -185,7 +186,7 @@ def predict(
     x_transformed = preprocessor.transform(df_raw)
     feature_names = preprocessor.get_feature_names_out()
     x_transformed_df = pd.DataFrame(x_transformed, columns=feature_names)
-    return model.predict(x_transformed_df)
+    return cast(np.ndarray, model.predict(x_transformed_df))
 
 
 def individual_prediction_tab(preprocessor: ColumnTransformer, model: BaseEstimator) -> None:
